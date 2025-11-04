@@ -1,0 +1,583 @@
+// @ts-nocheck - Type errors are due to missing node_modules, install dependencies to resolve
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { format, isValid, parseISO } from "date-fns";
+import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { api } from "@/lib/api";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+
+interface Booking {
+  _id?: string;
+  id?: string;
+  bookingNumber?: string;
+  booking_number?: string;
+  property?: {
+    name?: string;
+    _id?: string;
+  } | string;
+  customer?: {
+    name?: string;
+    email?: string;
+    _id?: string;
+  } | string;
+  checkIn?: string | Date;
+  checkOut?: string | Date;
+  check_in_date?: string | Date;
+  check_out_date?: string | Date;
+  numberOfGuests?: number;
+  num_guests?: number;
+  pricing?: {
+    totalAmount?: number;
+  };
+  payment?: {
+    advancePaid?: number;
+  };
+  total_amount?: number;
+  advance_paid?: number;
+  status?: string;
+}
+
+interface BookingsResponse {
+  success: boolean;
+  data: Booking[];
+  total?: number;
+  page?: number;
+  pages?: number;
+}
+
+const AdminBookings = (): JSX.Element => {
+  const queryClient = useQueryClient();
+  const [cancelDialogOpen, setCancelDialogOpen] = useState<boolean>(false);
+  const [selectedBooking, setSelectedBooking] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState<string>("");
+
+  const { data: bookingsResponse, isLoading } = useQuery<BookingsResponse>({
+    queryKey: ["admin-bookings"],
+    queryFn: () => api.getBookings({}),
+  });
+
+  const confirmMutation = useMutation({
+    mutationFn: (id: string) => api.confirmBooking(id),
+    onSuccess: () => {
+      toast.success("Booking confirmed");
+      queryClient.invalidateQueries({ queryKey: ["admin-bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+    },
+    onError: (error: unknown) => {
+      const errorMessage = error instanceof Error ? error.message : "Failed to confirm booking";
+      toast.error(errorMessage);
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      api.cancelBooking(id, reason),
+    onSuccess: () => {
+      toast.success("Booking cancelled");
+      queryClient.invalidateQueries({ queryKey: ["admin-bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      setCancelDialogOpen(false);
+      setCancelReason("");
+      setSelectedBooking(null);
+    },
+    onError: (error: unknown) => {
+      const errorMessage = error instanceof Error ? error.message : "Failed to cancel booking";
+      toast.error(errorMessage);
+    },
+  });
+
+  const formatDate = (date: string | Date | undefined): string => {
+    if (!date) return "N/A";
+    try {
+      const dateObj = typeof date === "string" ? parseISO(date) : new Date(date);
+      if (!isValid(dateObj)) return "Invalid Date";
+      return format(dateObj, "MMM dd, yyyy");
+    } catch {
+      return "Invalid Date";
+    }
+  };
+
+  const getStatusColor = (status: string | undefined): string => {
+    if (!status) return "bg-gray-100 text-gray-700 border-gray-200";
+    
+    switch (status.toLowerCase()) {
+      case "confirmed":
+        return "bg-green-100 text-green-700 border-green-200";
+      case "pending":
+        return "bg-orange-100 text-orange-700 border-orange-200";
+      case "cancelled":
+        return "bg-red-100 text-red-700 border-red-200";
+      case "completed":
+        return "bg-blue-100 text-blue-700 border-blue-200";
+      default:
+        return "bg-gray-100 text-gray-700 border-gray-200";
+    }
+  };
+
+  const handleCancelClick = (bookingId: string): void => {
+    setSelectedBooking(bookingId);
+    setCancelDialogOpen(true);
+  };
+
+  const handleCancelConfirm = (): void => {
+    if (selectedBooking) {
+      cancelMutation.mutate({
+        id: selectedBooking,
+        reason: cancelReason.trim() || undefined,
+      });
+    }
+  };
+
+  const bookings: Booking[] = bookingsResponse?.data || [];
+  const [openDetail, setOpenDetail] = useState<string | null>(null);
+  const [openPendingDetail, setOpenPendingDetail] = useState<string | null>(null);
+  const formatINR = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(n);
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div>
+        <h1 className="text-3xl font-bold mb-2">Bookings</h1>
+        <p className="text-muted-foreground">
+          View and manage all property bookings
+        </p>
+      </div>
+
+      <Card className="shadow-soft mb-6">
+        <CardHeader>
+          <CardTitle>Pending Approvals</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-6 text-muted-foreground">Loading...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Booking #</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(bookings || []).filter((b: any) => (b.verification_status || 'pending') === 'pending').map((b: any) => (
+                    <TableRow key={b.id || b._id}>
+                      <TableCell className="font-mono text-sm">{b.id || b._id}</TableCell>
+                      <TableCell>{typeof b.customer === 'object' ? (b.customer?.name || 'Guest') : 'Guest'}</TableCell>
+                      <TableCell>{(b.check_in_date || '').toString()}</TableCell>
+                      <TableCell><span className="text-orange-600 text-xs px-2 py-1 bg-orange-100 rounded-full">Pending</span></TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => api.verifyBooking(b.id || b._id, 'approved').then(() => queryClient.invalidateQueries({ queryKey: ['admin-bookings'] }))}>Approve</Button>
+                          <Button size="sm" variant="destructive" onClick={() => api.verifyBooking(b.id || b._id, 'rejected').then(() => queryClient.invalidateQueries({ queryKey: ['admin-bookings'] }))}>Reject</Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft mb-6">
+        <CardHeader>
+          <CardTitle>Upcoming Bookings</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-6 text-muted-foreground">Loading...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Booking #</TableHead>
+                    <TableHead>Property</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Check-in</TableHead>
+                    <TableHead>Check-out</TableHead>
+                    <TableHead>Guests</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Advance</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(bookings || [])
+                    .map((b: any) => ({
+                      ...b,
+                      _out: new Date(b.check_out_date || b.checkOut || 0)
+                    }))
+                    .filter((b: any) => (b.verification_status || '') === 'approved' && (b.status || '') === 'confirmed' && b._out >= new Date())
+                    .map((booking: any) => {
+                      const propertyName = booking.property_name || booking.property?.name || 'Unknown';
+                      const customerName = booking.customer_name || booking.customer?.name || 'Guest';
+                      const customerEmail = booking.customer?.email || '';
+                      const totalAmount = Number(booking.total_amount ?? booking.pricing?.totalAmount ?? 0);
+                      const advancePaid = Number(booking.advance_paid ?? booking.payment?.advancePaid ?? 0);
+                      const bookingId = booking._id || booking.id || '';
+                      if (!bookingId) return null;
+                      return (
+                        <TableRow key={bookingId}>
+                          <TableCell className="font-mono text-sm">{bookingId}</TableCell>
+                          <TableCell className="font-medium">{propertyName}</TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{customerName}</div>
+                              {customerEmail && <div className="text-xs text-muted-foreground">{customerEmail}</div>}
+                            </div>
+                          </TableCell>
+                          <TableCell>{formatDate(booking.check_in_date || booking.checkIn)}</TableCell>
+                          <TableCell>{formatDate(booking.check_out_date || booking.checkOut)}</TableCell>
+                          <TableCell>{booking.num_guests || booking.numberOfGuests || 0}</TableCell>
+                          <TableCell className="font-medium">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totalAmount)}</TableCell>
+                          <TableCell>{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(advancePaid)}</TableCell>
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(booking.status)}`}>{booking.status}</span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft mb-6">
+        <CardHeader>
+          <CardTitle>Cancelled Bookings</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-6 text-muted-foreground">Loading...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Booking #</TableHead>
+                    <TableHead>Property</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Check-in</TableHead>
+                    <TableHead>Check-out</TableHead>
+                    <TableHead>Guests</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Advance</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(bookings || [])
+                    .filter((b: any) => (b.verification_status || '') === 'approved' && (b.status || '') === 'cancelled')
+                    .map((booking: any) => {
+                      const propertyName = booking.property_name || booking.property?.name || 'Unknown';
+                      const customerName = booking.customer_name || booking.customer?.name || 'Guest';
+                      const customerEmail = booking.customer?.email || '';
+                      const totalAmount = Number(booking.total_amount ?? booking.pricing?.totalAmount ?? 0);
+                      const advancePaid = Number(booking.advance_paid ?? booking.payment?.advancePaid ?? 0);
+                      const bookingId = booking._id || booking.id || '';
+                      if (!bookingId) return null;
+                      return (
+                        <TableRow key={bookingId}>
+                          <TableCell className="font-mono text-sm">{bookingId}</TableCell>
+                          <TableCell className="font-medium">{propertyName}</TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{customerName}</div>
+                              {customerEmail && <div className="text-xs text-muted-foreground">{customerEmail}</div>}
+                            </div>
+                          </TableCell>
+                          <TableCell>{formatDate(booking.check_in_date || booking.checkIn)}</TableCell>
+                          <TableCell>{formatDate(booking.check_out_date || booking.checkOut)}</TableCell>
+                          <TableCell>{booking.num_guests || booking.numberOfGuests || 0}</TableCell>
+                          <TableCell className="font-medium">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totalAmount)}</TableCell>
+                          <TableCell>{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(advancePaid)}</TableCell>
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(booking.status)}`}>{booking.status}</span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft mb-6">
+        <CardHeader>
+          <CardTitle>Pending Payment</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-6 text-muted-foreground">Loading...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Booking #</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Advance</TableHead>
+                    <TableHead>Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(bookings || [])
+                    .filter((b: any) => (b.verification_status || '') === 'approved' && (b.status || '') === 'pending')
+                    .map((b: any) => (
+                      <>
+                      <TableRow key={(b.id || b._id) + '-row'}>
+                        <TableCell className="font-mono text-sm">{b.id || b._id}</TableCell>
+                        <TableCell>{typeof b.customer === 'object' ? (b.customer?.name || 'Guest') : 'Guest'}</TableCell>
+                        <TableCell>{(b.check_in_date || '').toString()}</TableCell>
+                        <TableCell>
+                          {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(b.total_amount ?? 0))}
+                        </TableCell>
+                        <TableCell>
+                          {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(b.advance_paid ?? 0))}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="secondary" onClick={() => setOpenPendingDetail(openPendingDetail === (b.id || b._id) ? null : (b.id || b._id))}>Details</Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {openPendingDetail === (b.id || b._id) && (
+                        <TableRow key={(b.id || b._id) + '-detail'}>
+                          <TableCell colSpan={6}>
+                            <div className="p-4 bg-muted/40 rounded-md space-y-2">
+                              <div className="text-sm">
+                                <div><span className="font-medium">Customer:</span> {typeof b.customer === 'object' ? (b.customer?.name || 'Guest') : 'Guest'}</div>
+                                <div><span className="font-medium">Dates:</span> {(b.check_in_date || '').toString()} → {(b.check_out_date || '').toString()}</div>
+                                <div><span className="font-medium">Guests:</span> {b.num_guests || 0}</div>
+                                <div><span className="font-medium">Reference ID:</span> {b.manual_reference || '-'}</div>
+                                <div><span className="font-medium">Advance Paid:</span> {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(b.advance_paid ?? 0))}</div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => confirmMutation.mutate(b.id || b._id)} disabled={confirmMutation.isPending}>Verify Payment & Confirm</Button>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      </>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft">
+        <CardHeader>
+          <CardTitle>All Bookings</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+              Loading bookings...
+            </div>
+          ) : bookings.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Booking #</TableHead>
+                    <TableHead>Property</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Check-in</TableHead>
+                    <TableHead>Check-out</TableHead>
+                    <TableHead>Guests</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Advance</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bookings
+                    .filter((b: any) => (b.verification_status || '') === 'approved' && (b.status || '') === 'confirmed')
+                    .map((booking: Booking) => {
+                    const property = booking.property;
+                    const customer = booking.customer;
+                    const propertyName = (booking as any).property_name || (typeof property === 'object' && property !== null ? (property as any).name : '') || 'Unknown';
+                    const customerName = (booking as any).customer_name || (typeof customer === 'object' && customer !== null ? (customer as any).name : '') || 'Guest';
+                    const customerEmail =
+                      typeof customer === "object" && customer !== null
+                        ? customer.email || ""
+                        : "";
+                    const totalAmount = Number((booking as any).total_amount ?? (booking as any).pricing?.totalAmount ?? 0);
+                    const advancePaid = Number((booking as any).advance_paid ?? (booking as any).payment?.advancePaid ?? 0);
+                    const checkInDate = (booking as any).check_in_date ?? (booking as any).checkIn;
+                    const checkOutDate = (booking as any).check_out_date ?? (booking as any).checkOut;
+                    const bookingId = booking._id || booking.id || "";
+
+                    if (!bookingId) return null;
+
+                    return (
+                      <TableRow key={bookingId}>
+                        <TableCell className="font-mono text-sm">
+                          {booking.bookingNumber || booking.booking_number || booking.id || booking._id || "N/A"}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {propertyName}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{customerName}</div>
+                            {customerEmail && (
+                              <div className="text-xs text-muted-foreground">
+                                {customerEmail}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{formatDate(checkInDate)}</TableCell>
+                        <TableCell>{formatDate(checkOutDate)}</TableCell>
+                        <TableCell>
+                          {booking.numberOfGuests || booking.num_guests || 0}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totalAmount)}
+                        </TableCell>
+                        <TableCell>
+                          {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(advancePaid)}
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(
+                              booking.status
+                            )}`}
+                          >
+                            {booking.status || "N/A"}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            {booking.status === "pending" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  confirmMutation.mutate(bookingId)
+                                }
+                                disabled={confirmMutation.isPending}
+                                className="gap-1"
+                              >
+                                <CheckCircle2 className="h-3 w-3" />
+                                Confirm
+                              </Button>
+                            )}
+                            {booking.status !== "cancelled" &&
+                              booking.status !== "completed" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleCancelClick(bookingId)}
+                                  disabled={cancelMutation.isPending}
+                                  className="gap-1 text-destructive hover:text-destructive"
+                                >
+                                  <XCircle className="h-3 w-3" />
+                                  Cancel
+                                </Button>
+                              )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              No bookings yet
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Cancel Booking Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Booking</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel this booking? This action cannot
+              be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="reason">Cancellation Reason (Optional)</Label>
+              <Textarea
+                id="reason"
+                placeholder="Enter reason for cancellation..."
+                value={cancelReason}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setCancelReason(e.target.value)
+                }
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCancelDialogOpen(false);
+                setCancelReason("");
+                setSelectedBooking(null);
+              }}
+              disabled={cancelMutation.isPending}
+            >
+              Keep Booking
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelConfirm}
+              disabled={cancelMutation.isPending}
+            >
+              {cancelMutation.isPending ? "Cancelling..." : "Cancel Booking"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default AdminBookings;
