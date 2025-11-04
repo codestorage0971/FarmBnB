@@ -177,7 +177,7 @@ const MyBookings = () => {
                         )}
                         <div className="pt-2 flex items-center justify-between">
                           <div className="text-sm">
-                            <div>Total: <span className="font-semibold">{formatINR(Number(b.total_amount ?? b.pricing?.totalAmount ?? 0))}</span></div>
+                            <div>Total: <span className="font-semibold">{formatINR(Number(b.total_amount ?? 0))}</span></div>
                             <div className="text-xs text-muted-foreground">Advance: {formatINR(Number(b.advance_paid ?? 0))}</div>
                           </div>
                           <div className="flex gap-2">
@@ -268,7 +268,7 @@ const MyBookings = () => {
                         </div>
                         <div className="pt-2 flex items-center justify-between">
                           <div className="text-sm">
-                            <div>Total: <span className="font-semibold">{formatINR(Number(b.total_amount ?? b.pricing?.totalAmount ?? 0))}</span></div>
+                            <div>Total: <span className="font-semibold">{formatINR(Number(b.total_amount ?? 0))}</span></div>
                           </div>
                           <Link to={`/properties/${b.property_id || b.property?._id || b.property?.id || ''}`}>
                             <Button variant="outline" size="sm">View</Button>

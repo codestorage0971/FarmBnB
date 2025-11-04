@@ -264,8 +264,9 @@ const AdminBookings = (): JSX.Element => {
                       const propertyName = booking.property_name || booking.property?.name || 'Unknown';
                       const customerName = booking.customer_name || booking.customer?.name || 'Guest';
                       const customerEmail = booking.customer?.email || '';
-                      const totalAmount = Number(booking.total_amount ?? booking.pricing?.totalAmount ?? 0);
-                      const advancePaid = Number(booking.advance_paid ?? booking.payment?.advancePaid ?? 0);
+                      // Use only the fields that backend stores - total_amount and advance_paid
+                      const totalAmount = Number(booking.total_amount ?? 0);
+                      const advancePaid = Number(booking.advance_paid ?? 0);
                       const bookingId = booking._id || booking.id || '';
                       if (!bookingId) return null;
                       return (
@@ -326,8 +327,9 @@ const AdminBookings = (): JSX.Element => {
                       const propertyName = booking.property_name || booking.property?.name || 'Unknown';
                       const customerName = booking.customer_name || booking.customer?.name || 'Guest';
                       const customerEmail = booking.customer?.email || '';
-                      const totalAmount = Number(booking.total_amount ?? booking.pricing?.totalAmount ?? 0);
-                      const advancePaid = Number(booking.advance_paid ?? booking.payment?.advancePaid ?? 0);
+                      // Use only the fields that backend stores - total_amount and advance_paid
+                      const totalAmount = Number(booking.total_amount ?? 0);
+                      const advancePaid = Number(booking.advance_paid ?? 0);
                       const bookingId = booking._id || booking.id || '';
                       if (!bookingId) return null;
                       return (
@@ -498,8 +500,9 @@ const AdminBookings = (): JSX.Element => {
                       typeof customer === "object" && customer !== null
                         ? customer.email || ""
                         : "";
-                    const totalAmount = Number((booking as any).total_amount ?? (booking as any).pricing?.totalAmount ?? 0);
-                    const advancePaid = Number((booking as any).advance_paid ?? (booking as any).payment?.advancePaid ?? 0);
+                    // Use only the fields that backend stores - total_amount and advance_paid
+                    const totalAmount = Number((booking as any).total_amount ?? 0);
+                    const advancePaid = Number((booking as any).advance_paid ?? 0);
                     const checkInDate = (booking as any).check_in_date ?? (booking as any).checkIn;
                     const checkOutDate = (booking as any).check_out_date ?? (booking as any).checkOut;
                     const bookingId = booking._id || booking.id || "";
