@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,8 @@ import api from "@/lib/api";
 import { getAuth, updateProfile, RecaptchaVerifier, linkWithPhoneNumber, ConfirmationResult } from "firebase/auth";
 
 const Profile = () => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
@@ -17,7 +19,19 @@ const Profile = () => {
   const [otpSent, setOtpSent] = useState<ConfirmationResult | null>(null);
   const [otpCode, setOtpCode] = useState("");
 
+  // Redirect to login if not authenticated
   useEffect(() => {
+    if (!loading && !user) {
+      navigate('/login');
+    }
+  }, [user, loading, navigate]);
+
+  useEffect(() => {
+    // Only fetch profile if user is logged in
+    if (!user || loading) {
+      return;
+    }
+
     (async () => {
       try {
         const res = await api.getProfile();
@@ -27,11 +41,15 @@ const Profile = () => {
         } else {
           setFullName(user?.name || "");
         }
-      } catch {
+      } catch (error: any) {
+        // If 401, user might not be logged in properly
+        if (error?.message?.includes('Unauthorized') || error?.message?.includes('401')) {
+          console.warn('Profile fetch failed - user may not be authenticated');
+        }
         setFullName(user?.name || "");
       }
     })();
-  }, [user?.name]);
+  }, [user, loading]);
 
   const handleSave = async () => {
     try {
@@ -82,6 +100,22 @@ const Profile = () => {
       toast.error(e?.message || 'Invalid code');
     }
   };
+
+  // Show loading state while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if user is not logged in (will redirect)
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-background">
