@@ -2,8 +2,18 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { supabase } = require('../utils/supabase');
 const { verifyFirebaseToken, requireAdmin } = require('../middleware/firebaseAuth');
+const multer = require('multer');
+const path = require('path');
 
 const router = express.Router();
+const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'images';
+const storage = multer.memoryStorage();
+const paymentScreenshotFilter = (req, file, cb) => {
+  const isImage = file.mimetype.startsWith('image/');
+  if (isImage) cb(null, true);
+  else cb(new Error('Only image files are allowed'), false);
+};
+const uploadPaymentScreenshot = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: paymentScreenshotFilter });
 
 // Helpers
 const isAdminFromReq = (req) => req.firebaseUser?.admin === true || req.firebaseUser?.role === 'admin';
@@ -71,7 +81,7 @@ router.post('/create-intent', verifyFirebaseToken, [
 // @route   POST /api/payments/confirm
 // @desc    Confirm manual payment and update booking
 // @access  Private (customer or admin)
-router.post('/confirm', verifyFirebaseToken, [
+router.post('/confirm', verifyFirebaseToken, uploadPaymentScreenshot.single('paymentScreenshot'), [
   body('bookingId').notEmpty().withMessage('Booking ID is required'),
   body('paymentIntentId').notEmpty().withMessage('Payment Intent ID is required'),
 ], async (req, res) => {
@@ -101,6 +111,20 @@ router.post('/confirm', verifyFirebaseToken, [
       return res.status(400).json({ success: false, message: 'ID proof not approved yet. Please wait for admin approval.' });
     }
 
+    // Upload payment screenshot if provided
+    let paymentScreenshotUrl = null;
+    if (req.file) {
+      const ext = path.extname(req.file.originalname) || '.jpg';
+      const uniqueName = `payment-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+      const filePath = `payment_screenshots/${bookingId}/${uniqueName}`;
+      const { error: uploadError } = await supabase.storage.from(BUCKET).upload(filePath, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+      if (uploadError) {
+        return res.status(500).json({ success: false, message: 'Failed to upload payment screenshot', error: uploadError.message });
+      }
+      const { data: publicData } = await supabase.storage.from(BUCKET).getPublicUrl(filePath);
+      paymentScreenshotUrl = publicData?.publicUrl || filePath;
+    }
+
     // Manual flow: accept optional amount and reference; admins can override
     // DO NOT auto-confirm - admin must verify payment and confirm manually
     const amountPaid = Number(req.body.amount || 0);
@@ -111,6 +135,7 @@ router.post('/confirm', verifyFirebaseToken, [
       payment_method: 'manual',
     };
     if (referenceId) updates.manual_reference = referenceId; // Store transaction ID for admin verification
+    if (paymentScreenshotUrl) updates.payment_screenshot_url = paymentScreenshotUrl; // Store payment screenshot URL
     // Status remains 'pending' until admin verifies and confirms
 
     const { data: updated, error: updErr } = await supabase
