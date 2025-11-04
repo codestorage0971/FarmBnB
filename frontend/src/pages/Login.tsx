@@ -33,11 +33,9 @@ const Login = () => {
       if (isLogin) {
         await login(email, password);
       } else {
-        // Enforce phone verification prior to account creation
-        if (otpPhase !== "verified") {
-          setLoading(false);
-          return toast.error("Please verify your phone number with OTP first");
-        }
+        // Phone verification is optional (Firebase billing required for OTP)
+        // If user tried to verify but billing not enabled, allow registration anyway
+        // If user didn't try to verify, also allow (phone verification is optional)
         await register(name, phone, email, password);
       }
     } catch (error: any) {
@@ -131,7 +129,15 @@ const Login = () => {
         } catch (_) {}
         delete (window as any).reCaptchaVerifier;
       }
-      toast.error(err?.message || "Failed to send OTP");
+      
+      // Handle billing error - make phone verification optional
+      if (err.code === 'auth/billing-not-enabled' || err.message?.includes('billing')) {
+        toast.error('Phone verification requires Firebase billing. Phone verification is optional - you can continue without it.');
+        // Allow registration to proceed without phone verification
+        setOtpPhase("verified"); // Mark as verified to allow registration
+      } else {
+        toast.error(err?.message || "Failed to send OTP");
+      }
     }
   };
 

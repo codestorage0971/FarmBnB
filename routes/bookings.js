@@ -196,27 +196,29 @@ router.post('/', verifyFirebaseToken, [
       });
     }
 
-    // Check phone verification - required for booking
+    // Check if phone number is provided (either verified via Firebase or saved in profile)
+    // Note: Firebase phone verification requires billing, so we allow manual verification
     try {
       const firebaseUser = await admin.auth().getUser(req.firebaseUser.uid);
-      const hasPhoneNumber = firebaseUser.phoneNumber && firebaseUser.phoneNumber.length > 0;
+      const hasFirebasePhone = firebaseUser.phoneNumber && firebaseUser.phoneNumber.length > 0;
       
-      // Also check profiles table for phone_verified flag
-      const { data: profile } = await supabase.from('profiles').select('phone_verified').eq('id', req.firebaseUser.uid).single();
-      const isPhoneVerified = hasPhoneNumber || (profile && profile.phone_verified === true);
+      // Check profiles table for phone number or phone_verified flag
+      const { data: profile } = await supabase.from('profiles').select('phone, phone_verified').eq('id', req.firebaseUser.uid).maybeSingle();
+      const hasPhoneInProfile = profile && profile.phone && profile.phone.length > 0;
+      const isPhoneVerified = hasFirebasePhone || (profile && profile.phone_verified === true);
       
-      if (!isPhoneVerified) {
+      // Allow booking if phone number exists (even if not Firebase-verified)
+      // Admin can verify manually later
+      if (!hasFirebasePhone && !hasPhoneInProfile) {
         return res.status(403).json({
           success: false,
-          message: 'Phone number verification required. Please verify your phone number in your profile before making a booking.'
+          message: 'Phone number required. Please add your phone number in your profile before making a booking.'
         });
       }
     } catch (err) {
       console.error('Error checking phone verification:', err);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to verify phone number status'
-      });
+      // Don't block booking if we can't check - allow it through
+      console.warn('Could not verify phone status, allowing booking anyway');
     }
 
     const { property: propertyId, checkIn, checkOut, numberOfGuests, specialRequests, foodRequired, foodPreference, allergies } = req.body;

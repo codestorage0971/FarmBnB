@@ -103,20 +103,20 @@ const PropertyDetails = () => {
       return;
     }
 
-    // Check phone verification before booking
+    // Check if phone number is provided (verification is optional due to Firebase billing)
     try {
       const profileRes = await api.getProfile();
       const profile = profileRes.data;
-      const isPhoneVerified = profile?.phone_verified === true;
+      const hasPhone = profile?.phone && profile.phone.length > 0;
       
-      if (!isPhoneVerified) {
-        toast.error("Phone number verification required. Please verify your phone number in your profile.");
+      if (!hasPhone) {
+        toast.error("Phone number required. Please add your phone number in your profile before booking.");
         navigate("/profile");
         return;
       }
     } catch (err) {
       // If profile fetch fails, backend will catch it anyway
-      console.error("Error checking phone verification:", err);
+      console.error("Error checking phone:", err);
     }
 
     if (!bookingDate) {

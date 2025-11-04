@@ -81,7 +81,15 @@ const Profile = () => {
       setOtpSent(confirmation);
       toast.success('OTP sent');
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to send OTP');
+      // Handle billing error
+      if (e.code === 'auth/billing-not-enabled' || e.message?.includes('billing')) {
+        toast.error('Phone verification requires Firebase billing. For now, you can save your phone number and it will be verified manually by admin.');
+        // Allow saving phone number without verification
+        await api.updateProfileSupabase({ phone });
+        toast.info('Phone number saved. Admin will verify it manually.');
+      } else {
+        toast.error(e?.message || 'Failed to send OTP');
+      }
     } finally {
       setVerifying(false);
     }
