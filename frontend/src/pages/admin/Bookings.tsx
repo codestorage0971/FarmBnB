@@ -152,7 +152,34 @@ const AdminBookings = (): JSX.Element => {
   const bookings: Booking[] = bookingsResponse?.data || [];
   const [openDetail, setOpenDetail] = useState<string | null>(null);
   const [openPendingDetail, setOpenPendingDetail] = useState<string | null>(null);
+  const [idProofDialogOpen, setIdProofDialogOpen] = useState(false);
+  const [selectedBookingForIds, setSelectedBookingForIds] = useState<any>(null);
   const formatINR = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(n);
+
+  const verifyMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'approved' | 'rejected' }) => api.verifyBooking(id, status),
+    onSuccess: () => {
+      toast.success(`Booking ${selectedBookingForIds?.verification_status === 'approved' ? 'approved' : 'status updated'}`);
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+      setIdProofDialogOpen(false);
+      setSelectedBookingForIds(null);
+    },
+    onError: (error: unknown) => {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update booking';
+      toast.error(errorMessage);
+    },
+  });
+
+  const handleViewIds = (booking: any) => {
+    setSelectedBookingForIds(booking);
+    setIdProofDialogOpen(true);
+  };
+
+  const handleVerify = (status: 'approved' | 'rejected') => {
+    if (selectedBookingForIds) {
+      verifyMutation.mutate({ id: selectedBookingForIds.id || selectedBookingForIds._id, status });
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -191,8 +218,7 @@ const AdminBookings = (): JSX.Element => {
                       <TableCell><span className="text-orange-600 text-xs px-2 py-1 bg-orange-100 rounded-full">Pending</span></TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          <Button size="sm" onClick={() => api.verifyBooking(b.id || b._id, 'approved').then(() => queryClient.invalidateQueries({ queryKey: ['admin-bookings'] }))}>Approve</Button>
-                          <Button size="sm" variant="destructive" onClick={() => api.verifyBooking(b.id || b._id, 'rejected').then(() => queryClient.invalidateQueries({ queryKey: ['admin-bookings'] }))}>Reject</Button>
+                          <Button size="sm" variant="outline" onClick={() => handleViewIds(b)}>View IDs</Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -529,6 +555,100 @@ const AdminBookings = (): JSX.Element => {
           )}
         </CardContent>
       </Card>
+
+      {/* ID Proofs Dialog */}
+      <Dialog open={idProofDialogOpen} onOpenChange={setIdProofDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>View ID Proofs - Booking #{selectedBookingForIds?.id || selectedBookingForIds?._id || 'N/A'}</DialogTitle>
+            <DialogDescription>
+              Review the uploaded ID proofs before approving or rejecting the booking.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedBookingForIds && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {selectedBookingForIds.id_proofs && Array.isArray(selectedBookingForIds.id_proofs) && selectedBookingForIds.id_proofs.length > 0 ? (
+                  selectedBookingForIds.id_proofs.map((proofUrl: string, index: number) => (
+                    <div key={index} className="border rounded-lg overflow-hidden">
+                      {proofUrl.toLowerCase().endsWith('.pdf') ? (
+                        <div className="p-4 bg-muted">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">ID Proof {index + 1} (PDF)</span>
+                            <Button size="sm" variant="outline" onClick={() => window.open(proofUrl, '_blank')}>
+                              Open PDF
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <img 
+                            src={proofUrl} 
+                            alt={`ID Proof ${index + 1}`}
+                            className="w-full h-auto max-h-96 object-contain bg-muted"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = '/placeholder.svg';
+                            }}
+                          />
+                          <div className="absolute top-2 right-2">
+                            <Button 
+                              size="sm" 
+                              variant="secondary" 
+                              onClick={() => window.open(proofUrl, '_blank')}
+                              className="bg-black/50 text-white hover:bg-black/70"
+                            >
+                              Open Full Size
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="col-span-2 text-center py-8 text-muted-foreground">
+                    No ID proofs uploaded yet
+                  </div>
+                )}
+              </div>
+              
+              <div className="border-t pt-4 space-y-2">
+                <div className="text-sm space-y-1">
+                  <div><span className="font-medium">Customer:</span> {selectedBookingForIds.customer_name || (typeof selectedBookingForIds.customer === 'object' ? (selectedBookingForIds.customer?.name || 'Guest') : 'Guest')}</div>
+                  <div><span className="font-medium">Property:</span> {selectedBookingForIds.property_name || 'Unknown'}</div>
+                  <div><span className="font-medium">Date:</span> {selectedBookingForIds.check_in_date || 'N/A'}</div>
+                  <div><span className="font-medium">Guests:</span> {selectedBookingForIds.num_guests || 0}</div>
+                  <div><span className="font-medium">Total:</span> {formatINR(Number(selectedBookingForIds.total_amount || 0))}</div>
+                  <div><span className="font-medium">ID Proofs Uploaded:</span> {selectedBookingForIds.id_proofs?.length || 0}</div>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIdProofDialogOpen(false);
+                setSelectedBookingForIds(null);
+              }}
+            >
+              Close
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => handleVerify('rejected')}
+              disabled={verifyMutation.isPending}
+            >
+              Reject
+            </Button>
+            <Button
+              onClick={() => handleVerify('approved')}
+              disabled={verifyMutation.isPending}
+            >
+              {verifyMutation.isPending ? 'Approving...' : 'Approve'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Cancel Booking Dialog */}
       <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
