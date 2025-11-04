@@ -4,9 +4,18 @@ This repository is configured for Vercel deployment of the frontend app located 
 
 ## Deploying to Vercel
 
-### Configuration Steps:
+### Option 1: Automatic (Recommended - using root vercel.json)
 1. **Import Repository** in Vercel Dashboard
-2. **Set Root Directory** to `frontend`
+2. **Root Directory**: Leave as `.` (root) - the `vercel.json` at root will handle frontend build
+3. Vercel will automatically:
+   - Run `cd frontend && npm install && npm run build`
+   - Output to `frontend/dist`
+4. Add environment variables (see below)
+
+### Option 2: Manual Root Directory
+If you want to set Root Directory manually:
+1. **Import Repository** in Vercel Dashboard  
+2. **Root Directory**: Type `frontend` manually (even if not visible in dropdown)
 3. **Framework Preset**: Vite (auto-detected)
 4. **Build Command**: Auto-detected (`npm run build`)
 5. **Output Directory**: Auto-detected (`dist`)
@@ -16,7 +25,7 @@ This repository is configured for Vercel deployment of the frontend app located 
 - `VITE_UPI_ID` → UPI ID to display on the Payment page
 - `VITE_UPI_QR_CODE_URL` → Public URL to the QR code image
 
-**Important**: Set the **Root Directory** to `frontend` in Vercel project settings. The `frontend/vercel.json` file handles SPA routing.
+**Note**: The root `vercel.json` configures the build to use the `frontend` directory. The `frontend/vercel.json` handles SPA routing.
 
 ## Local Development
 
