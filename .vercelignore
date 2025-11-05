@@ -1,12 +1,6 @@
-# Backend files - not needed for frontend deployment
-routes/
-server.js
-middleware/
-models/
-scripts/
-utils/
+# Note: We deploy both frontend and serverless API. Do NOT ignore backend files needed by serverless functions.
+# Keep uploads out of the deployment
 uploads/
-api/
 *.log
 .env
 .env.*
@@ -25,8 +19,7 @@ node_modules/
 # Development files
 .DS_Store
 *.log
-*.md
-!frontend/README.md
+# Keep markdown files; they are harmless and sometimes referenced
 
 # Keep frontend source
 !frontend/
