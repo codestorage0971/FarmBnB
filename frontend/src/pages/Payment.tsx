@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
 
 const PaymentPage = () => {
   const { bookingId } = useParams();
@@ -23,12 +23,16 @@ const PaymentPage = () => {
     const init = async () => {
       if (!bookingId) return;
       try {
-        const [paymentIntentRes, bookingRes] = await Promise.all([
-          api.createPaymentIntent(bookingId),
-          api.getBooking(bookingId)
-        ]);
-        setAmount(paymentIntentRes.amount);
-        setBooking(bookingRes.data);
+        const { data: bookingRes, error } = await supabase
+          .from('bookings')
+          .select('*')
+          .eq('id', bookingId)
+          .single();
+        if (error) throw error;
+        setBooking(bookingRes);
+        const advanceTarget = Math.round(Number(bookingRes.total_amount || 0) * 0.5 * 100) / 100;
+        const alreadyPaid = Number(bookingRes.advance_paid || 0);
+        setAmount(Math.max(advanceTarget - alreadyPaid, 0));
       } catch (e: any) {
         toast.error(e?.message || "Failed to initialize payment");
       } finally {
@@ -53,50 +57,29 @@ const PaymentPage = () => {
   const handleConfirm = async () => {
     if (!bookingId) return;
     try {
-      // Get auth token
-      const getAuthToken = async () => {
-        try {
-          const { getAuth } = await import('firebase/auth');
-          const auth = getAuth();
-          const user = auth.currentUser;
-          if (user) {
-            const token = await user.getIdToken();
-            if (token) return token;
-          }
-        } catch (error) {
-          console.error('Error getting Firebase token:', error);
-        }
-        return localStorage.getItem('token');
-      };
-      
-      const token = await getAuthToken();
-      if (!token) {
-        toast.error("Please log in to continue");
-        return;
-      }
-
-      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-      const formData = new FormData();
-      formData.append('bookingId', bookingId);
-      formData.append('paymentIntentId', 'manual');
-      formData.append('referenceId', referenceId);
-      formData.append('amount', amount.toString());
+      // Upload screenshot to Supabase Storage
+      let paymentScreenshotUrl: string | null = null;
       if (paymentScreenshot) {
-        formData.append('paymentScreenshot', paymentScreenshot);
+        const BUCKET = 'images';
+        const ext = paymentScreenshot.name.split('.').pop() || 'jpg';
+        const path = `payment_screenshots/${bookingId}/${Date.now()}-${Math.round(Math.random()*1e9)}.${ext}`;
+        const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, paymentScreenshot, { upsert: false, contentType: paymentScreenshot.type });
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+        paymentScreenshotUrl = pub.publicUrl;
       }
 
-      const response = await fetch(`${API_BASE_URL}/payments/confirm`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.message || 'Failed to record payment');
-      }
+      // Update booking with manual payment details
+      const { error: updErr } = await supabase
+        .from('bookings')
+        .update({
+          advance_paid: Number(booking?.advance_paid || 0) + Number(amount || 0),
+          payment_method: 'manual',
+          manual_reference: referenceId || null,
+          payment_screenshot_url: paymentScreenshotUrl,
+        })
+        .eq('id', bookingId);
+      if (updErr) throw updErr;
 
       toast.success("Payment details submitted. Admin will verify the transaction and confirm your booking.");
       navigate("/bookings");

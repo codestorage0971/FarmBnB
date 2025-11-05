@@ -1,4 +1,4 @@
-# Note: We deploy both frontend and serverless API. Do NOT ignore backend files needed by serverless functions.
+# Frontend-only deployment
 # Keep uploads out of the deployment
 uploads/
 *.log
@@ -23,3 +23,12 @@ node_modules/
 
 # Keep frontend source
 !frontend/
+
+# Ignore backend/serverless code
+api/
+routes/
+middleware/
+models/
+scripts/
+utils/
+server.js

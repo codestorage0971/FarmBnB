@@ -16,7 +16,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import api from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Calendar, MapPin, ChevronDown, ChevronUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import { format, parseISO, isValid } from "date-fns";
@@ -31,11 +32,19 @@ const MyBookings = () => {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
 
+  const { user } = useAuth();
   const { data, isLoading } = useQuery({
     queryKey: ["my-bookings"],
     queryFn: async () => {
-      const res = await api.getBookings({ limit: 100 });
-      return res.data || [];
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('*')
+        .eq('customer_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data || [];
     }
   });
 
@@ -226,7 +235,7 @@ const MyBookings = () => {
                     size="sm"
                     onClick={() => {
                       if (confirm("Are you sure you want to cancel this booking?")) {
-                        api.cancelBooking(b.id || b._id).then(() => location.reload());
+                        supabase.from('bookings').update({ status: 'cancelled' }).eq('id', b.id || b._id).then(() => location.reload());
                       }
                     }}
                   >
@@ -240,7 +249,7 @@ const MyBookings = () => {
                   size="sm"
                   onClick={() => {
                     if (confirm("Are you sure you want to cancel this booking?")) {
-                      api.cancelBooking(b.id || b._id).then(() => location.reload());
+                      supabase.from('bookings').update({ status: 'cancelled' }).eq('id', b.id || b._id).then(() => location.reload());
                     }
                   }}
                 >
@@ -256,7 +265,7 @@ const MyBookings = () => {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => api.cancelBooking(b.id || b._id).then(() => location.reload())}
+                      onClick={() => supabase.from('bookings').update({ status: 'cancelled' }).eq('id', b.id || b._id).then(() => location.reload())}
                     >
                       Cancel
                     </Button>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -149,23 +150,20 @@ const PropertyForm = () => {
 
     setUploading(true);
     try {
+      const BUCKET = 'images';
       const fileArray = Array.from(files);
-      const response = await api.uploadImages(fileArray);
-      
-      if (response.success && response.data) {
-        const uploadedFiles = Array.isArray(response.data) ? response.data : [response.data];
-        const newImages = uploadedFiles.map((img: any) => ({
-          url: img.url,
-          filename: img.filename,
-          isPrimary: false,
-        }));
-        
-        setFormData((prev) => ({
-          ...prev,
-          images: [...prev.images, ...newImages],
-        }));
-        toast.success(`Successfully uploaded ${newImages.length} image(s)`);
+      const uploaded: Array<{ url: string; filename?: string }> = [];
+      for (const f of fileArray) {
+        const ext = f.name.split('.').pop() || 'jpg';
+        const path = `properties/${Date.now()}-${Math.round(Math.random()*1e9)}.${ext}`;
+        const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, f, { upsert: false, contentType: f.type });
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+        uploaded.push({ url: pub.publicUrl, filename: path });
       }
+      const newImages = uploaded.map((img) => ({ url: img.url, filename: img.filename, isPrimary: false }));
+      setFormData((prev) => ({ ...prev, images: [...prev.images, ...newImages] }));
+      toast.success(`Successfully uploaded ${newImages.length} image(s)`);
     } catch (error: any) {
       toast.error(error.message || "Failed to upload images");
     } finally {
@@ -178,19 +176,19 @@ const PropertyForm = () => {
 
     setUploading(true);
     try {
+      const BUCKET = 'images';
       const fileArray = Array.from(files);
-      const response = await api.uploadVideos(fileArray);
-
-      if (response.success && response.data) {
-        const uploadedFiles = Array.isArray(response.data) ? response.data : [response.data];
-        const newVideos = uploadedFiles.map((f: any) => f.url as string);
-
-        setFormData((prev) => ({
-          ...prev,
-          videos: [...prev.videos, ...newVideos],
-        }));
-        toast.success(`Successfully uploaded ${newVideos.length} video(s)`);
+      const newVideos: string[] = [];
+      for (const f of fileArray) {
+        const ext = f.name.split('.').pop() || 'mp4';
+        const path = `properties/${Date.now()}-${Math.round(Math.random()*1e9)}.${ext}`;
+        const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, f, { upsert: false, contentType: f.type });
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+        newVideos.push(pub.publicUrl);
       }
+      setFormData((prev) => ({ ...prev, videos: [...prev.videos, ...newVideos] }));
+      toast.success(`Successfully uploaded ${newVideos.length} video(s)`);
     } catch (error: any) {
       toast.error(error.message || "Failed to upload videos");
     } finally {
@@ -570,7 +568,7 @@ const PropertyForm = () => {
                 {formData.images.map((img, idx) => (
                   <div key={idx} className="relative group">
                     <img
-                      src={img.url.startsWith('http') ? img.url : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${img.url}`}
+                      src={img.url}
                       alt={`Property ${idx + 1}`}
                       className="w-full aspect-video object-cover rounded-lg"
                       onError={(e) => {

@@ -8,7 +8,7 @@ import { Slider } from "@/components/ui/slider";
 import { Card } from "@/components/ui/card";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
 import { useSearchParams } from "react-router-dom";
 
 const commonFacilities = [
@@ -33,13 +33,21 @@ const Properties = () => {
   const { data: propertiesResponse, isLoading } = useQuery({
     queryKey: ["properties", searchQuery, priceRange, selectedFacilities],
     queryFn: async () => {
-      const response = await api.getProperties({
-        search: searchQuery || undefined,
-        minPrice: priceRange[0],
-        maxPrice: priceRange[1],
-        facilities: selectedFacilities.length > 0 ? selectedFacilities : undefined,
-      });
-      return response;
+      let q = supabase
+        .from('properties')
+        .select('*')
+        .gte('base_price_per_night', priceRange[0])
+        .lte('base_price_per_night', priceRange[1]);
+      if (searchQuery) {
+        q = q.ilike('name', `%${searchQuery}%`);
+      }
+      if (selectedFacilities.length > 0) {
+        // assuming facilities is a text[] column; adjust if stored differently
+        q = q.contains('facilities', selectedFacilities);
+      }
+      const { data, error } = await q;
+      if (error) throw error;
+      return { data: data || [], success: true } as any;
     },
   });
 
